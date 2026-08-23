@@ -16,9 +16,11 @@
 
 ---
 
-## 1. Why this project exists
+## 1. Motivation
 
-Every prior project in this portfolio (RAG assistant, predictive maintenance, flotation optimization, the dbt/DuckDB warehouse) was Python end to end -- even the dbt warehouse, which added a real SQL modeling layer, still reads as majority-Python on GitHub's language bar once byte counts are compared. This project is a deliberate pivot: **the entire pipeline -- data generation, ML training, evaluation, and the interactive app -- is C#, built as a real multi-project Visual Studio solution (`.sln` + 4 `.csproj`), not a single script.**
+I built this tool around the stack that actually runs day to day in mine planning: native Windows desktop software. Most of the tools geologists and planning engineers use on site (Vulcan, Datamine, Surpac, Deswik) are .NET desktop applications, not notebooks or web dashboards -- and out in the field, with limited connectivity, an executable that runs locally without depending on a server makes a lot more sense than spinning up a browser.
+
+That's why this project is C# end to end -- data generation, ML training and evaluation with ML.NET, and a WPF desktop app -- built as a real Visual Studio solution (`.sln` + 4 `.csproj`), not a loose script. It's also my way of deliberately exercising the .NET side of my data science work: strong typing and strict compilation before an operational decision gets made (is this ore or waste? do I need to re-blast?) is the attitude I want in a tool that informs real site decisions.
 
 ## 2. Business problem
 
@@ -108,7 +110,7 @@ All numbers below come from actually running `ChileMining.Trainer` in this repo:
 | Fragmentation classifier -- LogLoss | 0.431 |
 | xUnit tests | **7/7 passing** |
 
-Two of the xUnit tests specifically guard against a bug class encountered earlier in this portfolio: a classifier whose label isn't actually correlated with its features looks fine until you check the metrics and find near-random performance. Here, `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` and `HigherPowderFactor_ProducesFinerFragmentation_OnAverage` assert the causal relationship in the generator directly, and `TrainAndEvaluate_LearnsRealSignal_*` assert the trained models clear a real-signal threshold, not just "the code runs."
+Two of the xUnit tests specifically guard against a classic ML bug class: a classifier whose label isn't actually correlated with its features looks fine until you check the metrics and find near-random performance. Here, `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` and `HigherPowderFactor_ProducesFinerFragmentation_OnAverage` assert the causal relationship in the generator directly, and `TrainAndEvaluate_LearnsRealSignal_*` assert the trained models clear a real-signal threshold, not just "the code runs."
 
 ## 8. A culture-formatting bug worth knowing about
 

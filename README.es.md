@@ -16,9 +16,11 @@
 
 ---
 
-## 1. Por qué existe este proyecto
+## 1. Motivación
 
-Todos los proyectos anteriores de este portafolio (asistente RAG, mantención predictiva, optimización de flotación, el data warehouse dbt/DuckDB) fueron Python de punta a punta -- incluso el warehouse dbt, que agregó una capa real de modelado SQL, sigue leyéndose como mayoritariamente Python en la barra de lenguajes de GitHub al comparar bytes. Este proyecto es un giro deliberado: **todo el pipeline -- generación de datos, entrenamiento ML, evaluación, y la app interactiva -- es C#, construido como una solución real multi-proyecto de Visual Studio (`.sln` + 4 `.csproj`), no un script único.**
+Construí esta herramienta pensando en el stack que realmente corre en el día a día de planificación minera: software de escritorio nativo en Windows. Buena parte de las herramientas con las que trabajan geólogos e ingenieros de planificación en faena (Vulcan, Datamine, Surpac, Deswik) son aplicaciones .NET, no notebooks ni dashboards web -- y en terreno, con conectividad limitada, un ejecutable que corre localmente sin depender de un servidor tiene más sentido que levantar un navegador.
+
+Por eso este proyecto es C# de punta a punta -- generación de datos, entrenamiento y evaluación con ML.NET, y una app de escritorio WPF -- construido como una solución real de Visual Studio (`.sln` + 4 `.csproj`), no un script suelto. También es mi forma de ejercitar deliberadamente el lado .NET de mi trabajo en ciencia de datos: tipado fuerte y compilación estricta antes de tomar una decisión operacional (¿es mineral o estéril?, ¿hay que volver a tronar?) es la actitud que quiero en una herramienta que informa decisiones reales de faena.
 
 ## 2. Problema de negocio
 
@@ -108,7 +110,7 @@ Todos los números a continuación provienen de ejecutar realmente `ChileMining.
 | Clasificador de fragmentación -- LogLoss | 0,431 |
 | Tests xUnit | **7/7 pasando** |
 
-Dos de los tests xUnit protegen específicamente contra una clase de bug ya encontrada antes en este portafolio: un clasificador cuya etiqueta en realidad no está correlacionada con sus features se ve bien hasta que revisas las métricas y encuentras un desempeño casi aleatorio. Aquí, `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` y `HigherPowderFactor_ProducesFinerFragmentation_OnAverage` verifican directamente la relación causal en el generador, y `TrainAndEvaluate_LearnsRealSignal_*` verifican que los modelos entrenados superen un umbral de señal real, no solo "el código corre".
+Dos de los tests xUnit protegen específicamente contra una clase de bug clásica en machine learning: un clasificador cuya etiqueta en realidad no está correlacionada con sus features se ve bien hasta que revisas las métricas y encuentras un desempeño casi aleatorio. Aquí, `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` y `HigherPowderFactor_ProducesFinerFragmentation_OnAverage` verifican directamente la relación causal en el generador, y `TrainAndEvaluate_LearnsRealSignal_*` verifican que los modelos entrenados superen un umbral de señal real, no solo "el código corre".
 
 ## 8. Un bug de formato cultural que vale la pena conocer
 
