@@ -1,0 +1,21 @@
+# Build artifacts
+bin/
+obj/
+*.user
+
+# Visual Studio
+.vs/
+*.suo
+
+# Datos y modelos generados (reproducibles via ChileMining.Trainer)
+data/*.csv
+data/*.zip
+
+# Logs y temporales
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
