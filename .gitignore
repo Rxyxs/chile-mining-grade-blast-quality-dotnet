@@ -10,6 +10,7 @@ obj/
 # Datos y modelos generados (reproducibles via ChileMining.Trainer)
 data/*.csv
 data/*.zip
+data/*.onnx
 
 # Logs y temporales
 *.log

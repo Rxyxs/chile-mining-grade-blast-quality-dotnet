@@ -36,7 +36,7 @@ public class FragmentationClassifier
 
     private IEstimator<ITransformer> BuildPipeline()
     {
-        return _mlContext.Transforms.Conversion.MapValueToKey("LabelKey", "Label")
+        return _mlContext.Transforms.Conversion.MapValueToKey("LabelKey", "FragmentationLabel")
             .Append(_mlContext.Transforms.Concatenate(
                 "Features",
                 nameof(BlastDesign.BurdenM), nameof(BlastDesign.EspaciamientoM),

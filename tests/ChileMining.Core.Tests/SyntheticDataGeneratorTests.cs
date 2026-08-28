@@ -21,22 +21,10 @@ public class SyntheticDataGeneratorTests
             $"Potasica ({promedioPotasica:F3}) deberia tener mayor ley promedio que Propilitica ({promedioPropilitica:F3})");
     }
 
-    [Fact]
-    public void HigherPowderFactor_ProducesFinerFragmentation_OnAverage()
-    {
-        var designs = SyntheticDataGenerator.GenerateBlastDesigns(count: 3000, seed: 43);
-        var ordenado = designs.OrderBy(d => d.FactorPotenciaKgTon).ToList();
-
-        var mitadBaja = ordenado.Take(ordenado.Count / 2);
-        var mitadAlta = ordenado.Skip(ordenado.Count / 2);
-
-        double proporcionFinaBaja = mitadBaja.Count(d => d.CalidadFragmentacion == "Fino") / (double)mitadBaja.Count();
-        double proporcionFinaAlta = mitadAlta.Count(d => d.CalidadFragmentacion == "Fino") / (double)mitadAlta.Count();
-
-        Assert.True(
-            proporcionFinaAlta > proporcionFinaBaja,
-            $"Mayor factor de potencia deberia producir mas fragmentacion Fina ({proporcionFinaAlta:P1} vs {proporcionFinaBaja:P1})");
-    }
+    // La version categorica de este test (mayor factor de potencia -> mas
+    // Fino) se reemplazo por FragmentationP80Tests.HigherPowderFactor_ProducesLowerP80_OnAverage,
+    // que chequea la magnitud fisica continua (P80) en vez de un bucket
+    // categorico cuyos umbrales pueden recalibrarse independientemente.
 
     [Fact]
     public void SaveDrillHolesToCsv_UsesInvariantCulture_RegardlessOfSystemCulture()

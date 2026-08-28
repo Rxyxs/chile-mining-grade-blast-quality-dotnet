@@ -8,8 +8,10 @@
 
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/)
 [![ML.NET](https://img.shields.io/badge/ML.NET-5.0-4285F4)](https://dotnet.microsoft.com/apps/ai/ml-dotnet)
+[![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-1.20-005CED)](https://onnxruntime.ai/)
 [![WPF](https://img.shields.io/badge/UI-WPF-0078D7)](https://learn.microsoft.com/dotnet/desktop/wpf/)
-[![xUnit](https://img.shields.io/badge/tests-7%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
+[![Docker](https://img.shields.io/badge/container-Docker-2496ED)](Dockerfile)
+[![xUnit](https://img.shields.io/badge/tests-16%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
@@ -29,7 +31,7 @@ Mine planning and geology teams run two decisions constantly during grade contro
 1. **Grade control**: given drill-hole geochemical/geophysical readings, is this material ore or waste? Manual geostatistical software is often slow to iterate with in the field.
 2. **Blast design QA**: given a blast's burden, spacing, powder factor, rock hardness, and hole diameter, will fragmentation come out fine enough to avoid costly re-blasting or crusher damage from oversize?
 
-This project builds two ML.NET models -- a **regression** for copper grade and a **multiclass classifier** for fragmentation quality -- served through a native **WPF desktop app** for interactive use, no browser required.
+This project builds three ML.NET models -- a **regression** for copper grade, a **multiclass classifier** for a fragmentation-quality bucket, and a **regression for P80** (the actual continuous fragmentation KPI, exported to **ONNX** and served two ways: natively through ML.NET in the desktop app, and through **ONNX Runtime directly** in a standalone CLI) -- plus a native **WPF desktop app** for interactive use, no browser required.
 
 ## 3. Solution structure
 
@@ -39,24 +41,43 @@ chile-mining-grade-blast-quality-dotnet/
 ├── src/
 │   ├── ChileMining.Core/                  # class library: data models, generator, ML.NET pipelines
 │   │   ├── Data/                          # DrillHoleSample, BlastDesign
-│   │   ├── Generation/                    # SyntheticDataGenerator
-│   │   └── Ml/                            # GradeEstimator, FragmentationClassifier
-│   ├── ChileMining.Trainer/               # console app: generate -> train -> evaluate -> save
+│   │   ├── Generation/                    # SyntheticDataGenerator (Kuz-Ram / Rosin-Rammler P80)
+│   │   └── Ml/                            # GradeEstimator, FragmentationClassifier,
+│   │                                      # FragmentationP80Estimator, OnnxP80InferenceService
+│   ├── ChileMining.Trainer/               # console app: generate -> train -> evaluate -> save -> export ONNX
+│   ├── ChileMining.Cli/                   # console app: blast-pattern CSV in, P80 predictions out (ONNX Runtime)
 │   └── ChileMining.DesktopApp/            # WPF app: interactive grade & blast assistant
 ├── tests/
-│   └── ChileMining.Core.Tests/            # xUnit: 7 tests
-├── data/                                  # CSVs + trained .zip models (generated, gitignored)
+│   └── ChileMining.Core.Tests/            # xUnit: 16 tests
+├── data/                                  # CSVs + trained .zip/.onnx models (generated, gitignored)
+├── Dockerfile                             # multi-stage build: Trainer + Cli, Linux runtime image
 ├── README.md
 └── README.es.md
 ```
 
-Open `ChileMining.sln` directly in Visual Studio -- solution, project references, and NuGet packages (`Microsoft.ML`, `Microsoft.ML.FastTree`) are all wired up and ready to build with F5.
+Open `ChileMining.sln` directly in Visual Studio -- solution, project references, and NuGet packages (`Microsoft.ML`, `Microsoft.ML.FastTree`, `Microsoft.ML.OnnxConverter`, `Microsoft.ML.OnnxRuntime`) are all wired up and ready to build with F5.
 
-## 4. The two ML tasks
+## 4. The three ML tasks
 
 **Grade estimation (regression, FastTree)** -- predicts copper grade (%) from `ProfundidadM`, `UnidadGeologica`, `TipoAlteracion`, `DensidadGrCm3`, `ResistividadOhmM`, `DistanciaFallaM`. The synthetic generator ties grade to geology the way real porphyry-copper deposits zone: potassic-altered porphyry/skarn cores get the highest base grade, propylitic-altered andesite the lowest, with density and resistivity correlated to grade through plausible physical relationships (more sulfides → denser rock, lower resistivity) -- not independent random noise.
 
-**Blast fragmentation (multiclass, SDCA)** -- predicts `Fino` / `Medio` / `Grueso` / `SobreTamano` from `BurdenM`, `EspaciamientoM`, `FactorPotenciaKgTon`, `DurezaRocaMpa`, `DiametroPerforacionMm`, using a Kuz-Ram-style fragmentation index (higher powder factor and tighter blast pattern → finer fragmentation; harder rock → coarser) to assign labels before adding noise -- so, like the grade model, the label is causally grounded in the features rather than sampled independently of them.
+**Blast fragmentation quality (multiclass, SDCA)** -- predicts a `Fino` / `Medio` / `Grueso` / `SobreTamano` bucket from the blast-pattern parameters. Kept as the original quick-glance classifier used by the desktop app.
+
+**P80 (regression, FastTree, exported to ONNX)** -- predicts the actual industry-standard fragmentation KPI: **P80**, the sieve size (cm) below which 80% of the fragmented rock mass passes. Computed in the synthetic generator with the real **Kuznetsov mean-fragment-size model + Rosin-Rammler distribution** (Cunningham, 1987) -- not an ad-hoc index -- from burden, spacing, powder factor, rock hardness, hole diameter, and bench height. `FragmentationQuality.Classify(p80)` buckets this same continuous value into the four categories above, so the classifier's labels and the regressor's predictions can never silently disagree about what "Fino" means.
+
+## 4.1 Why P80, and why ONNX Runtime specifically
+
+The categorical classifier above answers "is this blast likely fine or coarse," but a mine-planning engineer's actual QA report needs the number: P80 in centimeters, compared against a target. `FragmentationP80Estimator` trains that regression, then `ExportToOnnx` serializes the whole fitted pipeline (feature concatenation + normalization + FastTree) to a single `.onnx` file. `OnnxP80InferenceService` then loads that file with `Microsoft.ML.OnnxRuntime.InferenceSession` **directly** -- not through `MLContext` -- which is the point: a production inference service, or a consumer written in Python/C++/Java, doesn't need the ML.NET training runtime at all, only the ONNX file and any ONNX Runtime binding. `ChileMining.Cli` is exactly that consumer.
+
+```mermaid
+flowchart LR
+    GEN["SyntheticDataGenerator\nKuz-Ram + Rosin-Rammler"] --> TRAIN["FragmentationP80Estimator\n(ML.NET FastTree)"]
+    TRAIN -->|"Save()"| ZIP["p80_estimator.zip\n(ML.NET native format)"]
+    TRAIN -->|"ExportToOnnx()"| ONNX["p80_estimator.onnx"]
+    ONNX --> RUNTIME["OnnxP80InferenceService\n(Microsoft.ML.OnnxRuntime.InferenceSession)"]
+    RUNTIME --> CLI["ChileMining.Cli\nblast-pattern CSV in -> P80 + calidad out"]
+    ZIP --> DESKTOP["ChileMining.DesktopApp\n(WPF, ML.NET native inference)"]
+```
 
 ## 5. Setup
 
@@ -70,15 +91,23 @@ dotnet restore
 
 ## 6. Usage
 
-**1. Generate data, train, and evaluate both models:**
+**1. Generate data, train, and evaluate all three models:**
 
 ```powershell
 dotnet run --project src/ChileMining.Trainer
 ```
 
-Writes `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, and `fragmentation_classifier.zip` to `data/`.
+Writes `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, `fragmentation_classifier.zip`, `p80_estimator.zip`, and `p80_estimator.onnx` to `data/`.
 
-**2. Launch the desktop app** (after step 1 has run at least once):
+**2. Predict P80 for a blast-pattern CSV, via ONNX Runtime:**
+
+```powershell
+dotnet run --project src/ChileMining.Cli -- --input mallas.csv --onnx data/p80_estimator.onnx --output resultado.csv
+```
+
+Input CSV (header required): `BurdenM,EspaciamientoM,FactorPotenciaKgTon,DurezaRocaMpa,DiametroPerforacionMm,AlturaBancoM`. Prints a per-row P80 + calidad table to the console and, with `--output`, writes the same data back out with two added columns.
+
+**3. Launch the desktop app** (after step 1 has run at least once):
 
 ```powershell
 dotnet run --project src/ChileMining.DesktopApp
@@ -86,13 +115,24 @@ dotnet run --project src/ChileMining.DesktopApp
 
 Two tabs: **Control de Leyes** (enter drill-hole parameters, get an estimated grade + ore/waste classification against an illustrative cutoff) and **Diseño de Tronadura** (enter blast design parameters, get a predicted fragmentation category).
 
-**3. Run the tests:**
+**4. Run the tests:**
 
 ```powershell
 dotnet test
 ```
 
 Or open `ChileMining.sln` in Visual Studio and use Test Explorer / F5 directly.
+
+## 6.1 Docker
+
+`Dockerfile` is a two-stage build (`dotnet/sdk:8.0` → `dotnet/runtime:8.0`) that publishes `ChileMining.Trainer` and `ChileMining.Cli` only -- `ChileMining.DesktopApp` is WPF (`net8.0-windows`) and deliberately excluded, since it can't run on the Linux runtime image anyway. The image trains and exports the ONNX model once at build time (`CHILEMINING_DATA_DIR=/app/data`), so the container is usable immediately:
+
+```powershell
+docker build -t chilemining-cli .
+docker run --rm -v ${PWD}:/data chilemining-cli --input /data/mallas.csv --onnx /app/data/p80_estimator.onnx --output /data/resultado.csv
+```
+
+**Honest note**: this Dockerfile was written and reviewed carefully (correct base images, layer-cached restore, the `CHILEMINING_DATA_DIR` override so the Trainer doesn't need a `.sln` checkout to find its output directory inside the container) but not executed with a real `docker build` -- Docker isn't installed on the machine this repo was built on. Everything else in this README (the .NET build, tests, ONNX export/inference parity) *was* run and its output captured below; this is the one piece that wasn't, and it's flagged here rather than silently presented as verified.
 
 ## 7. Validated results
 
@@ -105,18 +145,28 @@ All numbers below come from actually running `ChileMining.Trainer` in this repo:
 | Grade estimator -- R² | **0.833** |
 | Grade estimator -- RMSE | 0.121 (grade units, i.e. ±0.12 pp of Cu%) |
 | Grade estimator -- MAE | 0.096 |
-| Fragmentation classifier -- MicroAccuracy | **0.823** (vs. ~0.25 random-chance baseline for 4 classes) |
-| Fragmentation classifier -- MacroAccuracy | 0.798 |
-| Fragmentation classifier -- LogLoss | 0.431 |
-| xUnit tests | **7/7 passing** |
+| Fragmentation classifier -- MicroAccuracy | 0.865 |
+| Fragmentation classifier -- MacroAccuracy | 0.852 |
+| Fragmentation classifier -- LogLoss | 0.319 |
+| **P80 estimator -- R²** | **0.957** |
+| P80 estimator -- RMSE | 2.83 cm |
+| P80 estimator -- MAE | 2.20 cm |
+| xUnit tests | **16/16 passing** |
 
-Two of the xUnit tests specifically guard against a classic ML bug class: a classifier whose label isn't actually correlated with its features looks fine until you check the metrics and find near-random performance. Here, `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` and `HigherPowderFactor_ProducesFinerFragmentation_OnAverage` assert the causal relationship in the generator directly, and `TrainAndEvaluate_LearnsRealSignal_*` assert the trained models clear a real-signal threshold, not just "the code runs."
+Two of the xUnit tests specifically guard against a classic ML bug class: a classifier whose label isn't actually correlated with its features looks fine until you check the metrics and find near-random performance. `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` and `HigherPowderFactor_ProducesLowerP80_OnAverage` assert the causal relationship in the generator directly against the continuous P80 value (not the categorical bucket, which is more robust to threshold recalibration -- see §8 below), and `P80Estimator_TrainsWithReasonableFit` asserts the trained regressor clears a real-signal R² threshold, not just "the code runs."
 
-## 8. A culture-formatting bug worth knowing about
+**ONNX Runtime parity, measured directly**: `OnnxExport_ProducesPredictionsMatchingMLNetWithinTolerance` runs the same 15 held-out blast designs through both the native ML.NET prediction engine and the exported ONNX model via `Microsoft.ML.OnnxRuntime.InferenceSession`, and asserts they agree to within 0.01 cm. In one real run: ML.NET predicted `67.29185` cm, ONNX Runtime predicted `67.29186` cm for the same input -- floating-point rounding, not a logic discrepancy, confirming the export is faithful rather than just "the file got written."
+
+## 8. Two real bugs caught by running this, not by reviewing it
+
+- **P80 threshold miscalibration.** The first version of `FragmentationQuality.Classify` used thresholds carried over from the old ad-hoc fragmentation index (`Fino <= 15cm`). Once P80 was computed from the real Kuznetsov/Rosin-Rammler model, the existing `HigherPowderFactor_Produces...` test started failing with "0.0% Fino vs 0.0% Fino" -- the *best physically possible* case for this project's parameter ranges (max powder factor, softest rock, tightest pattern) works out to P80 ≈ 19.9cm, above the old 15cm cutoff, so the "Fino" bucket was unreachable no matter the input. Fixed by generating 5,000 designs and reading the actual P80 percentile distribution (min≈20cm, p50≈43cm, max≈98cm) before choosing thresholds (30/45/60cm) -- calibrated against measured output, not guessed a priori.
+- **ONNX export crash on unrelated passthrough columns.** The first `ExportToOnnx` implementation passed the *full* `BlastDesign` object (including the string `FragmentationLabel` and float `Label`/P80 columns, unused by the regression pipeline) as the sample `IDataView` to `ConvertToOnnx`. The resulting `.onnx` file loaded fine but crashed on every `session.Run()` call with `OrtValue::Get IsTensorSequence() was false` on an internal `Identity` node -- the exporter had modeled a passthrough for the unused string column in a way the runtime couldn't execute. Fixed by trimming the sample view to just the six numeric feature columns (`SelectColumns`) before export; confirmed by the ONNX-vs-ML.NET parity test in §7 actually passing afterward, not just by the export call not throwing.
+
+## 9. A culture-formatting bug worth knowing about
 
 `SyntheticDataGenerator`'s CSV writers use `FormattableString.Invariant(...)` for every numeric field. Without it, on a machine set to a Spanish (Chile) locale, `$"{value}"` formats floats with a **comma** decimal separator (`50,5`) -- which corrupts the CSV, since comma is also the column delimiter. This is guarded by a dedicated regression test (`SaveDrillHolesToCsv_UsesInvariantCulture_RegardlessOfSystemCulture`) that temporarily switches `CurrentCulture` to `es-CL` and asserts the file still parses as 7 columns per row. The WPF app takes the opposite, deliberate approach for *user-facing text*: it parses input with `CurrentCulture` first (so a Chilean user can type `0,30` naturally) and falls back to `InvariantCulture` (so the dot-formatted XAML defaults still work) -- file I/O wants portability, UI text wants to match what the user actually typed.
 
-## 9. Disclaimer
+## 10. Disclaimer
 
 All data is synthetic, generated by `SyntheticDataGenerator` with a fixed seed. The cutoff grade used in the desktop app (0.30% Cu) is illustrative, not a real economic cutoff -- a real cutoff depends on mine/plant costs and the copper price, and isn't a fixed constant.
 

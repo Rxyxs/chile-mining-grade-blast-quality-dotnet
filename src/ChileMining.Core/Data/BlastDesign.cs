@@ -26,7 +26,21 @@ public class BlastDesign
     public float DiametroPerforacionMm { get; set; }
 
     [LoadColumn(5)]
+    public float AlturaBancoM { get; set; }
+
+    /// <summary>
+    /// P80: tamano de malla de tamiz (cm) bajo el cual pasa el 80% de la masa
+    /// fragmentada -- el KPI estandar de fragmentacion de tronadura en mineria
+    /// (no un indice propio del proyecto). Calculado en SyntheticDataGenerator
+    /// con el modelo Kuznetsov + distribucion Rosin-Rammler, el estandar de la
+    /// industria para predecir fragmentacion a partir del diseno de la malla.
+    /// </summary>
+    [LoadColumn(6)]
     [ColumnName("Label")]
+    public float P80Cm { get; set; }
+
+    [LoadColumn(7)]
+    [ColumnName("FragmentationLabel")]
     public string CalidadFragmentacion { get; set; } = string.Empty;
 }
 
@@ -36,4 +50,10 @@ public class FragmentationPrediction
     public string CalidadPredicha { get; set; } = string.Empty;
 
     public float[] Score { get; set; } = System.Array.Empty<float>();
+}
+
+public class P80Prediction
+{
+    [ColumnName("Score")]
+    public float P80CmEstimado { get; set; }
 }
