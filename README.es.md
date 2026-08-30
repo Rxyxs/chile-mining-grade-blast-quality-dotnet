@@ -33,6 +33,16 @@ Los equipos de planificación minera y geología toman constantemente dos decisi
 
 Este proyecto construye tres modelos ML.NET -- una **regresión** para ley de cobre, un **clasificador multiclase** para un bucket de calidad de fragmentación, y una **regresión para P80** (el KPI continuo real de fragmentación, exportado a **ONNX** y servido de dos formas: nativamente vía ML.NET en la app de escritorio, y directamente vía **ONNX Runtime** en un CLI independiente) -- más una **app de escritorio WPF** nativa para uso interactivo, sin necesidad de navegador.
 
+## 2.1 Impacto de Negocio e Indicadores Clave (KPIs)
+
+| Métrica | Resultado | Qué significa |
+|---|---|---|
+| R² del estimador de ley | 0,833 (±0,12 pp Cu% RMSE) | Decisiones mineral/estéril fundamentadas en una relación geología-ley real y físicamente plausible |
+| R² del estimador de P80 (fragmentación) | **0,957** (2,83 cm RMSE) | Predice el KPI real estándar de industria, no un proxy en bucket, a partir de física real de Kuznetsov/Rosin-Rammler |
+| Precisión del clasificador de fragmentación | 0,865 micro / 0,852 macro | Bucket de QA de vistazo rápido para la app de escritorio, cruzado contra la regresión de P80 para que las etiquetas no diverjan en silencio |
+| Paridad ONNX Runtime vs. ML.NET nativo, medida | 67,29185 vs. 67,29186 cm | Confirma que la exportación ONNX es fiel (redondeo de punto flotante, no una discrepancia de lógica) |
+| Cobertura de tests | 16/16 tests xUnit pasando | Incluye guardas de relación causal, no solo checks de "el código corre" |
+
 ## 3. Estructura de la solución
 
 ```

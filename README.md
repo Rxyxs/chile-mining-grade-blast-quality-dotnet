@@ -33,6 +33,16 @@ Mine planning and geology teams run two decisions constantly during grade contro
 
 This project builds three ML.NET models -- a **regression** for copper grade, a **multiclass classifier** for a fragmentation-quality bucket, and a **regression for P80** (the actual continuous fragmentation KPI, exported to **ONNX** and served two ways: natively through ML.NET in the desktop app, and through **ONNX Runtime directly** in a standalone CLI) -- plus a native **WPF desktop app** for interactive use, no browser required.
 
+## 2.1 Business Impact & Key Performance Indicators
+
+| Metric | Result | What it means |
+|---|---|---|
+| Grade estimator R² | 0.833 (±0.12 pp Cu% RMSE) | Ore/waste calls grounded in a real, physically plausible geology-to-grade relationship |
+| P80 (fragmentation) estimator R² | **0.957** (2.83 cm RMSE) | Predicts the actual industry-standard KPI, not a proxy bucket, from real Kuznetsov/Rosin-Rammler physics |
+| Fragmentation classifier accuracy | 0.865 micro / 0.852 macro | Quick-glance QA bucket for the desktop app, cross-checked against the P80 regression so labels can't silently diverge |
+| ONNX Runtime vs. ML.NET native, measured parity | 67.29185 vs. 67.29186 cm | Confirms the ONNX export is faithful (floating-point rounding, not a logic discrepancy) |
+| Test coverage | 16/16 xUnit tests passing | Includes causal-relationship guards, not just "the code runs" checks |
+
 ## 3. Solution structure
 
 ```
