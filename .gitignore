@@ -20,5 +20,3 @@ data/*.onnx
 .idea/
 .DS_Store
 Thumbs.db
-CLAUDE.md
-.claude/
