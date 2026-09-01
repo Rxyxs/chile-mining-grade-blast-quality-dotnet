@@ -40,6 +40,15 @@ public static class Program
         Console.WriteLine(FormattableString.Invariant($"  MAE: {regressionMetrics.MeanAbsoluteError:F4}"));
         gradeEstimator.Save(Path.Combine(dataDir, "grade_estimator.zip"));
 
+        Console.WriteLine("\n=== 2.1/5 Comparando trainers de regresion para GradeEstimator (FastTree vs SDCA vs OnlineGradientDescent) ===");
+        var trainerComparison = GradeEstimatorTrainerComparison.Compare(drillHoles);
+        foreach (var result in trainerComparison)
+        {
+            Console.WriteLine(FormattableString.Invariant(
+                $"  {result.TrainerName,-22} R2={result.Metrics.RSquared:F4}  RMSE={result.Metrics.RootMeanSquaredError:F4}  MAE={result.Metrics.MeanAbsoluteError:F4}"));
+        }
+        GradeEstimatorTrainerComparison.SaveToCsv(trainerComparison, Path.Combine(dataDir, "grade_trainer_comparison.csv"));
+
         Console.WriteLine("\n=== 3/5 Entrenando FragmentationClassifier (SDCA multiclase) ===");
         var fragmentationClassifier = new FragmentationClassifier();
         var classificationMetrics = fragmentationClassifier.TrainAndEvaluate(blastDesigns);

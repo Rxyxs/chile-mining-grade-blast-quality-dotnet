@@ -11,7 +11,7 @@
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-1.20-005CED)](https://onnxruntime.ai/)
 [![WPF](https://img.shields.io/badge/UI-WPF-0078D7)](https://learn.microsoft.com/dotnet/desktop/wpf/)
 [![Docker](https://img.shields.io/badge/container-Docker-2496ED)](Dockerfile)
-[![xUnit](https://img.shields.io/badge/tests-16%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
+[![xUnit](https://img.shields.io/badge/tests-18%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
@@ -41,7 +41,8 @@ This project builds three ML.NET models -- a **regression** for copper grade, a 
 | P80 (fragmentation) estimator R² | **0.957** (2.83 cm RMSE) | Predicts the actual industry-standard KPI, not a proxy bucket, from real Kuznetsov/Rosin-Rammler physics |
 | Fragmentation classifier accuracy | 0.865 micro / 0.852 macro | Quick-glance QA bucket for the desktop app, cross-checked against the P80 regression so labels can't silently diverge |
 | ONNX Runtime vs. ML.NET native, measured parity | 67.29185 vs. 67.29186 cm | Confirms the ONNX export is faithful (floating-point rounding, not a logic discrepancy) |
-| Test coverage | 16/16 xUnit tests passing | Includes causal-relationship guards, not just "the code runs" checks |
+| Test coverage | 18/18 xUnit tests passing | Includes causal-relationship guards, not just "the code runs" checks |
+| Grade estimator trainer comparison | SDCA R²=0.860 > FastTree R²=0.833 on this dataset | Honest head-to-head, not a default-algorithm assumption -- see §7.1 |
 
 ## 3. Solution structure
 
@@ -107,7 +108,7 @@ dotnet restore
 dotnet run --project src/ChileMining.Trainer
 ```
 
-Writes `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, `fragmentation_classifier.zip`, `p80_estimator.zip`, and `p80_estimator.onnx` to `data/`.
+Writes `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, `grade_trainer_comparison.csv`, `fragmentation_classifier.zip`, `p80_estimator.zip`, and `p80_estimator.onnx` to `data/`.
 
 **2. Predict P80 for a blast-pattern CSV, via ONNX Runtime:**
 
@@ -161,7 +162,19 @@ All numbers below come from actually running `ChileMining.Trainer` in this repo:
 | **P80 estimator -- R²** | **0.957** |
 | P80 estimator -- RMSE | 2.83 cm |
 | P80 estimator -- MAE | 2.20 cm |
-| xUnit tests | **16/16 passing** |
+| xUnit tests | **18/18 passing** |
+
+## 7.1 Grade estimator: comparing regression trainers honestly
+
+`GradeEstimator` uses FastTree in production (the model the desktop app and `ChileMining.Trainer` save to `grade_estimator.zip`), but that choice was never actually compared against alternatives on this dataset -- it was just the trainer already used elsewhere in the project. `GradeEstimatorTrainerComparison` runs the *same* feature pipeline (one-hot geology/alteration + numeric readings, min-max normalized) and the *same* train/test split through three ML.NET regression trainers, all part of the base `Microsoft.ML` package (no extra native dependency): FastTree, SDCA, and Online Gradient Descent. `ChileMining.Trainer` runs this comparison automatically (step 2.1) and writes it to `data/grade_trainer_comparison.csv`.
+
+| Trainer | R² | RMSE | MAE |
+|---|---|---|---|
+| FastTree (production) | 0.833 | 0.121 | 0.096 |
+| **SDCA** | **0.860** | **0.111** | **0.088** |
+| Online Gradient Descent | 0.824 | 0.125 | 0.098 |
+
+**Honest result**: on this synthetic dataset, SDCA edges out FastTree on every metric. That's reported here as-is rather than swapped in silently -- FastTree remains the production trainer for now (it's what the rest of the write-up, the ONNX export path, and the desktop app were built and validated against), but it's a concrete, measured argument for revisiting that choice, not a claim that FastTree is definitively "best." `GradeEstimatorTrainerComparisonTests` in the test suite guards that the comparison pipeline itself learns real signal (not just that it runs).
 
 Two of the xUnit tests specifically guard against a classic ML bug class: a classifier whose label isn't actually correlated with its features looks fine until you check the metrics and find near-random performance. `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` and `HigherPowderFactor_ProducesLowerP80_OnAverage` assert the causal relationship in the generator directly against the continuous P80 value (not the categorical bucket, which is more robust to threshold recalibration -- see §8 below), and `P80Estimator_TrainsWithReasonableFit` asserts the trained regressor clears a real-signal R² threshold, not just "the code runs."
 

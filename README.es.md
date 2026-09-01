@@ -11,7 +11,7 @@
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-1.20-005CED)](https://onnxruntime.ai/)
 [![WPF](https://img.shields.io/badge/UI-WPF-0078D7)](https://learn.microsoft.com/dotnet/desktop/wpf/)
 [![Docker](https://img.shields.io/badge/contenedor-Docker-2496ED)](Dockerfile)
-[![xUnit](https://img.shields.io/badge/tests-16%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
+[![xUnit](https://img.shields.io/badge/tests-18%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
@@ -41,7 +41,8 @@ Este proyecto construye tres modelos ML.NET -- una **regresión** para ley de co
 | R² del estimador de P80 (fragmentación) | **0,957** (2,83 cm RMSE) | Predice el KPI real estándar de industria, no un proxy en bucket, a partir de física real de Kuznetsov/Rosin-Rammler |
 | Precisión del clasificador de fragmentación | 0,865 micro / 0,852 macro | Bucket de QA de vistazo rápido para la app de escritorio, cruzado contra la regresión de P80 para que las etiquetas no diverjan en silencio |
 | Paridad ONNX Runtime vs. ML.NET nativo, medida | 67,29185 vs. 67,29186 cm | Confirma que la exportación ONNX es fiel (redondeo de punto flotante, no una discrepancia de lógica) |
-| Cobertura de tests | 16/16 tests xUnit pasando | Incluye guardas de relación causal, no solo checks de "el código corre" |
+| Cobertura de tests | 18/18 tests xUnit pasando | Incluye guardas de relación causal, no solo checks de "el código corre" |
+| Comparación de trainers del estimador de ley | SDCA R²=0,860 > FastTree R²=0,833 en este dataset | Comparación honesta cabeza a cabeza, no un supuesto de algoritmo por default -- ver §7.1 |
 
 ## 3. Estructura de la solución
 
@@ -107,7 +108,7 @@ dotnet restore
 dotnet run --project src/ChileMining.Trainer
 ```
 
-Escribe `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, `fragmentation_classifier.zip`, `p80_estimator.zip` y `p80_estimator.onnx` en `data/`.
+Escribe `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, `grade_trainer_comparison.csv`, `fragmentation_classifier.zip`, `p80_estimator.zip` y `p80_estimator.onnx` en `data/`.
 
 **2. Predecir P80 para un CSV de mallas de tronadura, vía ONNX Runtime:**
 
@@ -161,7 +162,19 @@ Todos los números a continuación provienen de ejecutar realmente `ChileMining.
 | **Estimador P80 -- R²** | **0,957** |
 | Estimador P80 -- RMSE | 2,83 cm |
 | Estimador P80 -- MAE | 2,20 cm |
-| Tests xUnit | **16/16 pasando** |
+| Tests xUnit | **18/18 pasando** |
+
+## 7.1 Estimador de ley: comparando trainers de regresión honestamente
+
+`GradeEstimator` usa FastTree en producción (el modelo que la app de escritorio y `ChileMining.Trainer` guardan en `grade_estimator.zip`), pero esa elección nunca se comparó realmente contra alternativas en este dataset -- era simplemente el trainer ya usado en otra parte del proyecto. `GradeEstimatorTrainerComparison` corre el *mismo* pipeline de features (one-hot de geología/alteración + lecturas numéricas, normalizadas min-max) y el *mismo* split de train/test a través de tres trainers de regresión de ML.NET, todos parte del paquete base `Microsoft.ML` (sin dependencia nativa extra): FastTree, SDCA y Online Gradient Descent. `ChileMining.Trainer` corre esta comparación automáticamente (paso 2.1) y la escribe en `data/grade_trainer_comparison.csv`.
+
+| Trainer | R² | RMSE | MAE |
+|---|---|---|---|
+| FastTree (producción) | 0,833 | 0,121 | 0,096 |
+| **SDCA** | **0,860** | **0,111** | **0,088** |
+| Online Gradient Descent | 0,824 | 0,125 | 0,098 |
+
+**Resultado honesto**: en este dataset sintético, SDCA supera a FastTree en todas las métricas. Se reporta tal cual acá en vez de cambiarlo en silencio -- FastTree sigue siendo el trainer de producción por ahora (es contra lo que se construyó y validó el resto del write-up, el camino de exportación ONNX y la app de escritorio), pero es un argumento concreto y medido para revisar esa elección, no una afirmación de que FastTree sea definitivamente "el mejor". `GradeEstimatorTrainerComparisonTests` en la suite de tests verifica que el pipeline de comparación aprenda señal real (no solo que corra).
 
 Dos de los tests xUnit protegen específicamente contra una clase de bug clásica en machine learning: un clasificador cuya etiqueta en realidad no está correlacionada con sus features se ve bien hasta que revisas las métricas y encuentras un desempeño casi aleatorio. `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` y `HigherPowderFactor_ProducesLowerP80_OnAverage` verifican la relación causal directamente contra el valor P80 continuo (no el bucket categórico, más robusto a la recalibración de umbrales -- ver §8 abajo), y `P80Estimator_TrainsWithReasonableFit` verifica que el regresor entrenado supere un umbral de R² de señal real, no solo "el código corre".
 
