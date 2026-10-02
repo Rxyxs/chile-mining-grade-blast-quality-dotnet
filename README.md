@@ -56,6 +56,7 @@ chile-mining-grade-blast-quality-dotnet/
 │   │   └── Ml/                            # GradeEstimator, FragmentationClassifier,
 │   │                                      # FragmentationP80Estimator, OnnxP80InferenceService
 │   ├── ChileMining.Trainer/               # console app: generate -> train -> evaluate -> save -> export ONNX
+│   ├── ChileMining.Charts/                # console app: README figures (ScottPlot), repeats training to measure spread
 │   ├── ChileMining.Cli/                   # console app: blast-pattern CSV in, P80 predictions out (ONNX Runtime)
 │   └── ChileMining.DesktopApp/            # WPF app: interactive grade & blast assistant
 ├── tests/
@@ -108,6 +109,12 @@ dotnet restore
 dotnet run --project src/ChileMining.Trainer
 ```
 
+**1b. Redraw the README figures** (retrains 12 times to measure run-to-run spread, then plots with ScottPlot):
+
+```powershell
+dotnet run --project src/ChileMining.Charts
+```
+
 Writes `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, `grade_trainer_comparison.csv`, `fragmentation_classifier.zip`, `p80_estimator.zip`, and `p80_estimator.onnx` to `data/`.
 
 **2. Predict P80 for a blast-pattern CSV, via ONNX Runtime:**
@@ -156,9 +163,9 @@ All numbers below come from actually running `ChileMining.Trainer` in this repo:
 | Grade estimator -- R² | **0.833** |
 | Grade estimator -- RMSE | 0.121 (grade units, i.e. ±0.12 pp of Cu%) |
 | Grade estimator -- MAE | 0.096 |
-| Fragmentation classifier -- MicroAccuracy | 0.865 |
-| Fragmentation classifier -- MacroAccuracy | 0.852 |
-| Fragmentation classifier -- LogLoss | 0.319 |
+| Fragmentation classifier -- MicroAccuracy | 0.865 (one run; varies — see §7.2) |
+| Fragmentation classifier -- MacroAccuracy | 0.852 (one run; varies — see §7.2) |
+| Fragmentation classifier -- LogLoss | 0.319 (one run; varies — see §7.2) |
 | **P80 estimator -- R²** | **0.957** |
 | P80 estimator -- RMSE | 2.83 cm |
 | P80 estimator -- MAE | 2.20 cm |
@@ -176,6 +183,45 @@ All numbers below come from actually running `ChileMining.Trainer` in this repo:
 
 **Honest result**: on this synthetic dataset, SDCA edges out FastTree on every metric. That's reported here as-is rather than swapped in silently -- FastTree remains the production trainer for now (it's what the rest of the write-up, the ONNX export path, and the desktop app were built and validated against), but it's a concrete, measured argument for revisiting that choice, not a claim that FastTree is definitively "best." `GradeEstimatorTrainerComparisonTests` in the test suite guards that the comparison pipeline itself learns real signal (not just that it runs).
 
+![Trainer comparison across 12 retrainings](outputs/figures/trainer_comparison_stability.png)
+
+**And the comparison holds up to being repeated**, which is worth checking before acting on a 0.027 R² difference. Over 12 retrainings on the same 2,000 samples, FastTree returns **0.8329 every single time** and Online Gradient Descent **0.8240 every single time** — both are deterministic here. SDCA is not: it lands in [0.8598, 0.8635], a spread of 0.0036. Its worst run still beats FastTree's fixed value by 0.027, roughly **7x its own spread**, so the ranking is not an artifact of a lucky draw. What *is* a single draw is the headline `0.860`; the honest summary is "SDCA ≈ 0.861 ± 0.002, FastTree exactly 0.8329".
+
+## 7.2 The classifier metrics are not a fixed number
+
+![Fragmentation classifier metrics across 12 retrainings](outputs/figures/classifier_metric_stability.png)
+
+The same non-determinism that affects SDCA regression affects `FragmentationClassifier`, which is multiclass SDCA. Over 12 retrainings on identical data:
+
+| Metric | §7 table (one run) | Mean of 12 | Range | Spread |
+|---|---:|---:|---:|---:|
+| MicroAccuracy | 0.865 | 0.8593 | [0.8494, 0.8727] | 0.0234 |
+| MacroAccuracy | 0.852 | 0.8402 | [0.8083, 0.8554] | **0.0471** |
+| LogLoss | 0.319 | 0.3275 | [0.3157, 0.3406] | 0.0249 |
+
+The values quoted in §7 are a legitimate run — each sits inside the observed range — but they are quoted to three decimals as though stable, and MacroAccuracy in particular moves by nearly 5 points between runs. A reader comparing this classifier against another model should compare it against the *interval*, not against `0.852`. The regressions do not have this problem: FastTree is reproducible to four decimals on both targets.
+
+The underlying cause is that ML.NET's SDCA trainers parallelise over examples and are not deterministic unless explicitly constrained. Fixing it would mean pinning the trainer's concurrency, which has a throughput cost; measuring and reporting the spread is the cheaper and more honest option, and it is what the figure does.
+
+## 7.3 Out-of-sample checks on both regressors
+
+The metrics above come from each estimator's internal train/test split. As an independent check, both models were scored against a **fresh holdout generated with a different seed** — 600 rows that took no part in training or in the internal split:
+
+| Model | Internal R² | Holdout R² (600 fresh rows) |
+|---|---:|---:|
+| `FragmentationP80Estimator` | 0.9574 | **0.9535** |
+| `GradeEstimator` | 0.8329 | **0.8455** |
+
+![P80 predicted against actual on the fresh holdout](outputs/figures/p80_predicted_vs_actual.png)
+
+![Cu grade predicted against actual on the fresh holdout](outputs/figures/grade_predicted_vs_actual.png)
+
+Both hold up: P80 loses 0.004 R² out of sample and the grade estimator actually gains 0.013. Neither is overfitting its split.
+
+**Both clouds show the same shrinkage toward the mean, and it is worth reading before trusting either at the extremes.** The P80 scatter is tight between 20 and 45 cm and fans out above roughly 50 cm; the coarsest sample in the holdout sits at about 90 cm actual and is predicted near 75 — a 15 cm under-call. The grade scatter compresses from both ends: samples at 0.1–0.2% Cu are predicted as high as 0.45%, and samples at 1.3–1.5% are predicted around 1.1%.
+
+For the grade estimator that compression costs little, since ore/waste calls are made near a cutoff in the middle of the range where the model is strongest. For P80 it matters more: under-predicting the coarse tail means under-calling exactly the oversize risk the estimator exists to flag, so the headline R² of 0.957 should not be read as uniform accuracy across the range.
+
 Two of the xUnit tests specifically guard against a classic ML bug class: a classifier whose label isn't actually correlated with its features looks fine until you check the metrics and find near-random performance. `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` and `HigherPowderFactor_ProducesLowerP80_OnAverage` assert the causal relationship in the generator directly against the continuous P80 value (not the categorical bucket, which is more robust to threshold recalibration -- see §8 below), and `P80Estimator_TrainsWithReasonableFit` asserts the trained regressor clears a real-signal R² threshold, not just "the code runs."
 
 **ONNX Runtime parity, measured directly**: `OnnxExport_ProducesPredictionsMatchingMLNetWithinTolerance` runs the same 15 held-out blast designs through both the native ML.NET prediction engine and the exported ONNX model via `Microsoft.ML.OnnxRuntime.InferenceSession`, and asserts they agree to within 0.01 cm. In one real run: ML.NET predicted `67.29185` cm, ONNX Runtime predicted `67.29186` cm for the same input -- floating-point rounding, not a logic discrepancy, confirming the export is faithful rather than just "the file got written."
@@ -188,6 +234,8 @@ Two of the xUnit tests specifically guard against a classic ML bug class: a clas
 ## 9. A culture-formatting bug worth knowing about
 
 `SyntheticDataGenerator`'s CSV writers use `FormattableString.Invariant(...)` for every numeric field. Without it, on a machine set to a Spanish (Chile) locale, `$"{value}"` formats floats with a **comma** decimal separator (`50,5`) -- which corrupts the CSV, since comma is also the column delimiter. This is guarded by a dedicated regression test (`SaveDrillHolesToCsv_UsesInvariantCulture_RegardlessOfSystemCulture`) that temporarily switches `CurrentCulture` to `es-CL` and asserts the file still parses as 7 columns per row. The WPF app takes the opposite, deliberate approach for *user-facing text*: it parses input with `CurrentCulture` first (so a Chilean user can type `0,30` naturally) and falls back to `InvariantCulture` (so the dot-formatted XAML defaults still work) -- file I/O wants portability, UI text wants to match what the user actually typed.
+
+`ChileMining.Charts` falls on the portability side of that same rule, and hit the same bug: generated on an `es-CL` machine, the axis labels and annotations first came out as `0,8607`. Figures are embedded in `README.md`, which is the English document GitHub shows by default, so the project pins `CultureInfo.InvariantCulture` before plotting. Same principle as the CSV writers, different output format.
 
 ## 10. Disclaimer
 

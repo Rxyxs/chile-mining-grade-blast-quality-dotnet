@@ -56,6 +56,7 @@ chile-mining-grade-blast-quality-dotnet/
 │   │   └── Ml/                            # GradeEstimator, FragmentationClassifier,
 │   │                                      # FragmentationP80Estimator, OnnxP80InferenceService
 │   ├── ChileMining.Trainer/               # app de consola: generar -> entrenar -> evaluar -> guardar -> exportar ONNX
+│   ├── ChileMining.Charts/                # app de consola: gráficos del README (ScottPlot), repite el entrenamiento para medir dispersión
 │   ├── ChileMining.Cli/                   # app de consola: CSV de mallas de tronadura -> predicciones P80 (ONNX Runtime)
 │   └── ChileMining.DesktopApp/            # app WPF: asistente interactivo de leyes y tronadura
 ├── tests/
@@ -108,6 +109,12 @@ dotnet restore
 dotnet run --project src/ChileMining.Trainer
 ```
 
+**1b. Redibujar los gráficos del README** (reentrena 12 veces para medir la dispersión entre corridas, después grafica con ScottPlot):
+
+```powershell
+dotnet run --project src/ChileMining.Charts
+```
+
 Escribe `drill_holes.csv`, `blast_designs.csv`, `grade_estimator.zip`, `grade_trainer_comparison.csv`, `fragmentation_classifier.zip`, `p80_estimator.zip` y `p80_estimator.onnx` en `data/`.
 
 **2. Predecir P80 para un CSV de mallas de tronadura, vía ONNX Runtime:**
@@ -156,9 +163,9 @@ Todos los números a continuación provienen de ejecutar realmente `ChileMining.
 | Estimador de ley -- R² | **0,833** |
 | Estimador de ley -- RMSE | 0,121 (unidades de ley, es decir ±0,12 puntos porcentuales de Cu%) |
 | Estimador de ley -- MAE | 0,096 |
-| Clasificador de fragmentación -- MicroAccuracy | 0,865 |
-| Clasificador de fragmentación -- MacroAccuracy | 0,852 |
-| Clasificador de fragmentación -- LogLoss | 0,319 |
+| Clasificador de fragmentación -- MicroAccuracy | 0,865 (una corrida; varía — ver §7.2) |
+| Clasificador de fragmentación -- MacroAccuracy | 0,852 (una corrida; varía — ver §7.2) |
+| Clasificador de fragmentación -- LogLoss | 0,319 (una corrida; varía — ver §7.2) |
 | **Estimador P80 -- R²** | **0,957** |
 | Estimador P80 -- RMSE | 2,83 cm |
 | Estimador P80 -- MAE | 2,20 cm |
@@ -176,6 +183,45 @@ Todos los números a continuación provienen de ejecutar realmente `ChileMining.
 
 **Resultado honesto**: en este dataset sintético, SDCA supera a FastTree en todas las métricas. Se reporta tal cual acá en vez de cambiarlo en silencio -- FastTree sigue siendo el trainer de producción por ahora (es contra lo que se construyó y validó el resto del write-up, el camino de exportación ONNX y la app de escritorio), pero es un argumento concreto y medido para revisar esa elección, no una afirmación de que FastTree sea definitivamente "el mejor". `GradeEstimatorTrainerComparisonTests` en la suite de tests verifica que el pipeline de comparación aprenda señal real (no solo que corra).
 
+![Comparación de trainers sobre 12 reentrenamientos](outputs/figures/trainer_comparison_stability.png)
+
+**Y la comparación aguanta ser repetida**, cosa que conviene verificar antes de actuar sobre una diferencia de 0,027 en R². Sobre 12 reentrenamientos con los mismos 2.000 sondajes, FastTree devuelve **0,8329 todas las veces** y Online Gradient Descent **0,8240 todas las veces** — ambos son deterministas acá. SDCA no: cae en [0,8598, 0,8635], una dispersión de 0,0036. Su peor corrida igual le gana al valor fijo de FastTree por 0,027, unas **7 veces su propia dispersión**, así que el ordenamiento no es producto de un sorteo afortunado. Lo que sí es un solo sorteo es el `0,860` titular; el resumen honesto es "SDCA ≈ 0,861 ± 0,002, FastTree exactamente 0,8329".
+
+## 7.2 Las métricas del clasificador no son un número fijo
+
+![Métricas del clasificador sobre 12 reentrenamientos](outputs/figures/classifier_metric_stability.png)
+
+El mismo no-determinismo que afecta a SDCA en regresión afecta a `FragmentationClassifier`, que es SDCA multiclase. Sobre 12 reentrenamientos con datos idénticos:
+
+| Métrica | Tabla §7 (una corrida) | Media de 12 | Rango | Dispersión |
+|---|---:|---:|---:|---:|
+| MicroAccuracy | 0,865 | 0,8593 | [0,8494, 0,8727] | 0,0234 |
+| MacroAccuracy | 0,852 | 0,8402 | [0,8083, 0,8554] | **0,0471** |
+| LogLoss | 0,319 | 0,3275 | [0,3157, 0,3406] | 0,0249 |
+
+Los valores citados en §7 son una corrida legítima — cada uno cae dentro del rango observado — pero están citados a tres decimales como si fueran estables, y MacroAccuracy en particular se mueve casi 5 puntos entre corridas. Alguien que compare este clasificador contra otro modelo debería compararlo contra el *intervalo*, no contra `0,852`. Las regresiones no tienen este problema: FastTree es reproducible a cuatro decimales en ambos targets.
+
+La causa de fondo es que los trainers SDCA de ML.NET paralelizan sobre los ejemplos y no son deterministas salvo que se los restrinja explícitamente. Arreglarlo implicaría fijar la concurrencia del trainer, con un costo de rendimiento; medir y reportar la dispersión es la opción más barata y más honesta, y es lo que hace la figura.
+
+## 7.3 Chequeos fuera de muestra en ambos regresores
+
+Las métricas de arriba vienen del split interno de entrenamiento/prueba de cada estimador. Como verificación independiente, ambos modelos se evaluaron contra un **holdout fresco generado con otra semilla** — 600 filas que no participaron ni del entrenamiento ni del split interno:
+
+| Modelo | R² interno | R² holdout (600 filas frescas) |
+|---|---:|---:|
+| `FragmentationP80Estimator` | 0,9574 | **0,9535** |
+| `GradeEstimator` | 0,8329 | **0,8455** |
+
+![P80 predicho contra real en el holdout fresco](outputs/figures/p80_predicted_vs_actual.png)
+
+![Ley de Cu predicha contra real en el holdout fresco](outputs/figures/grade_predicted_vs_actual.png)
+
+Ambos aguantan: P80 pierde 0,004 de R² fuera de muestra y el estimador de ley incluso gana 0,013. Ninguno está sobreajustando su split.
+
+**Las dos nubes muestran el mismo encogimiento hacia la media, y conviene leerlo antes de confiar en cualquiera de los dos en los extremos.** La nube de P80 es estrecha entre 20 y 45 cm y se abre por encima de unos 50 cm; la muestra más gruesa del holdout está en torno a 90 cm reales y se predice cerca de 75 — una subestimación de 15 cm. La nube de ley se comprime desde ambos extremos: muestras de 0,1–0,2% Cu se predicen hasta en 0,45%, y muestras de 1,3–1,5% se predicen alrededor de 1,1%.
+
+Para el estimador de ley esa compresión cuesta poco, porque las decisiones de mineral/lastre se toman cerca de una ley de corte en el medio del rango, donde el modelo es más fuerte. Para P80 importa más: subestimar la cola gruesa es subestimar justamente el riesgo de sobretamaño que el estimador existe para advertir, así que el R² titular de 0,957 no debe leerse como precisión uniforme a lo largo del rango.
+
 Dos de los tests xUnit protegen específicamente contra una clase de bug clásica en machine learning: un clasificador cuya etiqueta en realidad no está correlacionada con sus features se ve bien hasta que revisas las métricas y encuentras un desempeño casi aleatorio. `PotasicaAlteration_HasHigherAverageGrade_ThanPropilitica` y `HigherPowderFactor_ProducesLowerP80_OnAverage` verifican la relación causal directamente contra el valor P80 continuo (no el bucket categórico, más robusto a la recalibración de umbrales -- ver §8 abajo), y `P80Estimator_TrainsWithReasonableFit` verifica que el regresor entrenado supere un umbral de R² de señal real, no solo "el código corre".
 
 **Paridad de ONNX Runtime, medida directamente**: `OnnxExport_ProducesPredictionsMatchingMLNetWithinTolerance` corre los mismos 15 diseños de tronadura reservados a través del motor de predicción nativo de ML.NET y del modelo ONNX exportado vía `Microsoft.ML.OnnxRuntime.InferenceSession`, y verifica que concuerden con una tolerancia de 0,01 cm. En una corrida real: ML.NET predijo `67,29185` cm, ONNX Runtime predijo `67,29186` cm para la misma entrada -- redondeo de punto flotante, no una discrepancia de lógica, confirmando que la exportación es fiel y no solo que "el archivo se escribió".
@@ -188,6 +234,8 @@ Dos de los tests xUnit protegen específicamente contra una clase de bug clásic
 ## 9. Un bug de formato cultural que vale la pena conocer
 
 Los escritores de CSV de `SyntheticDataGenerator` usan `FormattableString.Invariant(...)` en cada campo numérico. Sin esto, en una máquina con configuración regional en español (Chile), `$"{valor}"` formatea los floats con **coma** como separador decimal (`50,5`) -- lo que corrompe el CSV, ya que la coma también es el delimitador de columnas. Esto está cubierto por un test de regresión dedicado (`SaveDrillHolesToCsv_UsesInvariantCulture_RegardlessOfSystemCulture`) que cambia temporalmente `CurrentCulture` a `es-CL` y verifica que el archivo siga interpretándose como 7 columnas por fila. La app WPF toma el enfoque opuesto, deliberadamente, para *texto de cara al usuario*: parsea la entrada con `CurrentCulture` primero (para que un usuario chileno pueda escribir `0,30` de forma natural) y cae a `InvariantCulture` como respaldo (para que los valores por defecto del XAML, escritos con punto, sigan funcionando) -- el I/O de archivos quiere portabilidad, el texto de UI quiere coincidir con lo que el usuario realmente escribió.
+
+`ChileMining.Charts` cae del lado de portabilidad de esa misma regla, y tropezó con el mismo bug: generados en una máquina `es-CL`, los rótulos de ejes y las anotaciones salieron primero como `0,8607`. Las figuras van incrustadas en `README.md`, que es el documento en inglés que GitHub muestra por defecto, así que el proyecto fija `CultureInfo.InvariantCulture` antes de graficar. Mismo principio que los escritores de CSV, distinto formato de salida.
 
 ## 10. Disclaimer
 
