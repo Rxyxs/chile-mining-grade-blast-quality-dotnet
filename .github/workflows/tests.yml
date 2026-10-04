@@ -1,0 +1,32 @@
+name: tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  dotnet-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # No se usa `dotnet build ChileMining.sln`: la solucion incluye
+      # ChileMining.DesktopApp, que es WPF (net8.0-windows) y no compila fuera
+      # de Windows. Los otros cinco proyectos son net8.0 y si lo hacen, asi que
+      # se construyen uno por uno en Linux -- es gratis y cubre el codigo que
+      # realmente se puede verificar aca. La app de escritorio queda sin CI por
+      # ser Windows-only, lo cual se dice en vez de disimularlo con un runner
+      # de Windows que costaria 10x por el mismo valor.
+      - name: Build the cross-platform projects
+        run: |
+          for proj in Core Cli Trainer Charts; do
+            dotnet build "src/ChileMining.$proj/ChileMining.$proj.csproj" -c Release --nologo
+          done
+
+      - name: Run the xUnit suite
+        run: dotnet test tests/ChileMining.Core.Tests/ChileMining.Core.Tests.csproj -c Release --nologo --verbosity normal
