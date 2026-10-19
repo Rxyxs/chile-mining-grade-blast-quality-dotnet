@@ -4,7 +4,7 @@
 
 **Una solucion de ciencia de datos nativa en C# / ML.NET para estimacion de ley de cobre y calidad de fragmentacion de tronadura, construida y abierta directamente en Visual Studio**
 
-🌐 **[English](README.md)** | **[Español](README.es.md)**
+[[English](README.md) ] | [Español ]
 
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/)
 [![ML.NET](https://img.shields.io/badge/ML.NET-5.0-4285F4)](https://dotnet.microsoft.com/apps/ai/ml-dotnet)
