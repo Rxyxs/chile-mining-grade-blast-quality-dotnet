@@ -1,0 +1,13 @@
+protocol,model,n,variance_explained,mae_m,mape_pct
+random 5-fold,FastTree,97,0.760,0.060,23.9
+random 5-fold,SDCA,97,0.540,0.087,39.9
+random 5-fold,Mean,97,-0.117,0.158,80.6
+leave one site out,FastTree,97,-0.585,0.177,98.8
+leave one site out,SDCA,97,0.029,0.141,64.2
+leave one site out,Mean,97,-0.216,0.171,87.1
+published hold-out,FastTree,13,0.895,0.034,11.9
+published hold-out,SDCA,13,0.772,0.048,15.6
+published hold-out,Kuz-Ram (as published),13,0.445,0.088,45.0
+published hold-out,Regression (as published),13,0.747,0.055,20.1
+field blasts (Sui 2025),FastTree,5,-151.580,0.250,145.2
+field blasts (Sui 2025),SDCA,5,-0.423,0.019,11.8

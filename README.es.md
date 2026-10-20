@@ -11,7 +11,7 @@
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-1.20-005CED)](https://onnxruntime.ai/)
 [![WPF](https://img.shields.io/badge/UI-WPF-0078D7)](https://learn.microsoft.com/dotnet/desktop/wpf/)
 [![Docker](https://img.shields.io/badge/contenedor-Docker-2496ED)](Dockerfile)
-[![xUnit](https://img.shields.io/badge/tests-18%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
+[![xUnit](https://img.shields.io/badge/tests-21%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
@@ -39,9 +39,10 @@ Este proyecto construye tres modelos ML.NET -- una **regresión** para ley de co
 |---|---|---|
 | R² del estimador de ley | 0,833 (±0,12 pp Cu% RMSE) | Decisiones mineral/estéril fundamentadas en una relación geología-ley real y físicamente plausible |
 | R² del estimador de P80 (fragmentación) | **0,957** (2,83 cm RMSE) | Predice el KPI real estándar de industria, no un proxy en bucket, a partir de física real de Kuznetsov/Rosin-Rammler |
+| **Mismo enfoque sobre 97 tronaduras reales, mina nueva** | varianza explicada **-0,585** (FastTree), 0,029 (lineal) | El 0,957 sintético no se traslada a una faena no vista — ver §7.4 |
 | Precisión del clasificador de fragmentación | 0,865 micro / 0,852 macro | Bucket de QA de vistazo rápido para la app de escritorio, cruzado contra la regresión de P80 para que las etiquetas no diverjan en silencio |
 | Paridad ONNX Runtime vs. ML.NET nativo, medida | 67,29185 vs. 67,29186 cm | Confirma que la exportación ONNX es fiel (redondeo de punto flotante, no una discrepancia de lógica) |
-| Cobertura de tests | 18/18 tests xUnit pasando | Incluye guardas de relación causal, no solo checks de "el código corre" |
+| Cobertura de tests | 21/21 tests xUnit pasando | Incluye guardas de relación causal, no solo checks de "el código corre" |
 | Comparación de trainers del estimador de ley | SDCA R²=0,860 > FastTree R²=0,833 en este dataset | Comparación honesta cabeza a cabeza, no un supuesto de algoritmo por default -- ver §7.1 |
 
 ## 3. Estructura de la solución
@@ -169,7 +170,7 @@ Todos los números a continuación provienen de ejecutar realmente `ChileMining.
 | **Estimador P80 -- R²** | **0,957** |
 | Estimador P80 -- RMSE | 2,83 cm |
 | Estimador P80 -- MAE | 2,20 cm |
-| Tests xUnit | **18/18 pasando** |
+| Tests xUnit | **21/21 pasando** |
 
 ## 7.1 Estimador de ley: comparando trainers de regresión honestamente
 
@@ -226,6 +227,31 @@ Dos de los tests xUnit protegen específicamente contra una clase de bug clásic
 
 **Paridad de ONNX Runtime, medida directamente**: `OnnxExport_ProducesPredictionsMatchingMLNetWithinTolerance` corre los mismos 15 diseños de tronadura reservados a través del motor de predicción nativo de ML.NET y del modelo ONNX exportado vía `Microsoft.ML.OnnxRuntime.InferenceSession`, y verifica que concuerden con una tolerancia de 0,01 cm. En una corrida real: ML.NET predijo `67,29185` cm, ONNX Runtime predijo `67,29186` cm para la misma entrada -- redondeo de punto flotante, no una discrepancia de lógica, confirmando que la exportación es fiel y no solo que "el archivo se escribió".
 
+## 7.4 El mismo enfoque sobre tronaduras reales
+
+Todo lo anterior está medido sobre `SyntheticDataGenerator`, cuyo P80 sale de las ecuaciones de Kuznetsov/Rosin-Rammler que después se le pide al modelo que aprenda de vuelta. `RealBlastBenchmark` (el último paso de `ChileMining.Trainer`) pregunta qué pasa con tronaduras reales:
+
+- **Corpus de entrenamiento:** 97 tronaduras de banco de diez operaciones a rajo abierto, subterráneas y canteras en cuatro continentes (incluida Murgul, una mina de cobre a rajo abierto en Turquía), publicadas por Hudaverdi, Kulatilake y Kuzu (2010), *Int. J. Numer. Anal. Meth. Geomech.* 35:1318-1333, doi:10.1002/nag.957. Siete variables adimensionales (espaciamiento/burden, altura de banco/burden, burden/diámetro, taco/burden, factor de carga, tamaño de bloque in situ, módulo de Young) y el tamaño medio de fragmento medido, x50.
+- **Hold-out publicado:** 13 tronaduras con las predicciones de Kuznetsov y de regresión del propio paper, así que la comparación es sobre las mismas filas.
+- **Tronaduras de terreno:** cinco tronaduras de producción en una mina de granito del noreste de China, Sui et al. (2025), *Appl. Sci.* 15:1254, CC BY 4.0.
+
+Los CSV de `data/real/` son la transcripción verificada en [CAOS_BlastFrag](https://github.com/fsantibanezleal/CAOS_BlastFrag) (MIT), que conserva las fuentes y los defectos conocidos de la validación publicada. El objetivo es x50 y no P80 porque eso es lo que midieron los papers; la métrica es varianza explicada (1 - SSE/SST), que se vuelve negativa cuando un modelo es peor que predecir la media.
+
+| Protocolo | FastTree | SDCA (lineal) | Media de entrenamiento | Kuz-Ram (publicado) | Regresión (publicada) |
+|---|---:|---:|---:|---:|---:|
+| P80 sintético (§7, como referencia) | 0,957 | — | — | — | — |
+| 5-fold aleatorio, 97 tronaduras | 0,760 | 0,540 | -0,117 | — | — |
+| **Dejando una faena fuera** (una mina nueva) | **-0,585** | 0,029 | -0,216 | — | — |
+| Hold-out publicado, 13 tronaduras | 0,895 | 0,772 | — | 0,445 | 0,747 |
+| Tronaduras de terreno, China (MAE) | 0,250 m | 0,019 m | — | — | — |
+
+Qué dice:
+
+- **Los splits aleatorios halagan al modelo.** Dentro de una faena las tronaduras comparten roca, malla y a menudo entradas idénticas, así que un fold aleatorio mide memoria de la faena, no predicción. Dejando una faena completa fuera, FastTree es peor que predecir la media de entrenamiento (-0,585) y el modelo lineal apenas la iguala (0,029). El 0,957 de los datos sintéticos no describe lo que haría el modelo en una mina que no ha visto.
+- **En el hold-out publicado los árboles le ganan a Kuz-Ram (0,895 vs 0,445)**, pero esas 13 tronaduras son de las faenas de entrenamiento, y una tiene entradas idénticas a una tronadura de entrenamiento. Es el mismo optimismo dentro de la faena que el split aleatorio, no evidencia de transferencia.
+- **Los árboles no extrapolan.** El granito chino tiene un módulo de Young de 5,6 GPa, bajo el rango del corpus (9,6 a 60 GPa). FastTree erra el x50 por 25 cm en fragmentos de unos 15 cm; el modelo lineal, que extrapola de forma suave, erra por 1,9 cm. Con cinco tronaduras es una anécdota, pero es la falla esperable de un modelo de árboles fuera de su rango de entrenamiento.
+- **La estimación de ley sigue siendo sintética.** No existe un dataset público de sondajes con las entradas de este modelo (unidad geológica, alteración, densidad, resistividad, distancia a falla) y ley de cobre, así que `GradeEstimator` se sigue entrenando y reportando solo sobre datos generados.
+
 ## 8. Dos bugs reales detectados corriendo esto, no revisándolo
 
 - **Umbrales de P80 mal calibrados.** La primera versión de `FragmentationQuality.Classify` usaba umbrales heredados del viejo índice de fragmentación ad-hoc (`Fino <= 15cm`). Una vez que P80 se calculó con el modelo real de Kuznetsov/Rosin-Rammler, el test existente `HigherPowderFactor_Produces...` empezó a fallar con "0,0% Fino vs 0,0% Fino" -- el mejor caso físicamente posible para los rangos de parámetros de este proyecto (factor de potencia máximo, roca más blanda, malla más cerrada) da P80 ≈ 19,9cm, por sobre el umbral anterior de 15cm, así que el bucket "Fino" era inalcanzable sin importar la entrada. Corregido generando 5.000 diseños y leyendo la distribución de percentiles de P80 real (min≈20cm, p50≈43cm, max≈98cm) antes de elegir los umbrales (30/45/60cm) -- calibrados contra la salida medida, no adivinados a priori.
@@ -239,7 +265,7 @@ Los escritores de CSV de `SyntheticDataGenerator` usan `FormattableString.Invari
 
 ## 10. Disclaimer
 
-Todos los datos son sintéticos, generados por `SyntheticDataGenerator` con una semilla fija. La ley de corte usada en la app de escritorio (0,30% Cu) es ilustrativa, no una ley de corte económica real -- una ley de corte real depende de los costos de mina/planta y del precio del cobre, y no es una constante fija.
+Los modelos de §7 a §7.3 y la app de escritorio se entrenan con datos sintéticos, generados por `SyntheticDataGenerator` con una semilla fija. §7.4 usa tronaduras reales publicadas; la estimación de ley no tiene contraparte real. La ley de corte usada en la app de escritorio (0,30% Cu) es ilustrativa, no una ley de corte económica real -- una ley de corte real depende de los costos de mina/planta y del precio del cobre, y no es una constante fija.
 
 ## Licencia
 
