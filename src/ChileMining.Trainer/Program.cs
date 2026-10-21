@@ -70,6 +70,27 @@ public static class Program
         p80Estimator.ExportToOnnx(onnxPath, blastDesigns.Take(10));
         Console.WriteLine($"  {onnxPath}");
 
+        Console.WriteLine("\n=== Extra: el modelo de fragmentacion contra tronaduras reales ===");
+        string realDir = Path.Combine(dataDir, "real");
+        if (File.Exists(Path.Combine(realDir, "hudaverdi1997.csv")))
+        {
+            var corpus = RealBlastBenchmark.LoadCsv(Path.Combine(realDir, "hudaverdi1997.csv"));
+            var holdout = RealBlastBenchmark.LoadCsv(Path.Combine(realDir, "hudaverdi_holdout.csv"));
+            var field = RealBlastBenchmark.LoadCsv(Path.Combine(realDir, "sui2025_field.csv"));
+            var rows = RealBlastBenchmark.Run(corpus, holdout, field);
+            foreach (var r in rows)
+            {
+                Console.WriteLine(FormattableString.Invariant(
+                    $"  {r.Protocol,-24} {r.Model,-26} n={r.N,3}  var.expl.={r.VarianceExplained,7:F3}  MAE={r.MaeM:F3} m  MAPE={r.MapePct:F1}%"));
+            }
+
+            RealBlastBenchmark.SaveToCsv(rows, Path.Combine(realDir, "real_blast_benchmark.csv"));
+        }
+        else
+        {
+            Console.WriteLine("  data/real/hudaverdi1997.csv no encontrado; se omite.");
+        }
+
         Console.WriteLine("\nListo. Modelos y datasets guardados en: " + dataDir);
     }
 

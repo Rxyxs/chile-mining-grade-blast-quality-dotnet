@@ -1,0 +1,23 @@
+# Sui, Zhou, Zhao, Yang and Zou (2025), Appl. Sci. 15:1254, doi:10.3390/app15031254, CC BY 4.0,
+# Tables 4 and 5. Five production blasts in a granite mine in northeastern China, used by the authors
+# as an independent engineering validation of a stacking ensemble trained on the 97-blast corpus.
+#
+# The mean fragment size was measured with Split-Desktop v4.0.0.42 against a 1 m on-site scale.
+# Both the absolute pattern and the seven dimensionless ratios are printed in the source; the ratios
+# below are the source's own Table 5 values and they agree with the absolute geometry recomputed.
+#
+# WHY THIS SET IS SHIPPED SEPARATELY: its Young modulus of 5.6 GPa is BELOW the 9.57 GPa minimum of
+# the training corpus, on the feature both 2025 studies rank as most important. Every prediction on
+# these rows is an EXTRAPOLATION and is stamped as one. This is the only out-of-envelope real test
+# available for this corpus, which is what makes it worth carrying.
+#
+# It is also the only real set whose ABSOLUTE geometry is published directly, so it needs no
+# reconstruction and can serve as the reconstruction path's independent check.
+#
+# Numeric values are experimental facts from a CC BY article, reused with citation.
+blast_id,site,B_m,S_m,H_m,D_mm,T_m,S_over_B,H_over_B,B_over_D,T_over_B,Pf_kg_m3,XB_m,E_GPa,x50_measured_m
+NE1,Granite-NE,7.0,8.5,15.0,250,7.5,1.2143,2.1429,28.0,1.0714,0.62,1.11,5.6,0.1456
+NE2,Granite-NE,7.0,9.0,15.0,250,7.5,1.2857,2.1429,28.0,1.0714,0.64,1.11,5.6,0.1630
+NE3,Granite-NE,7.0,10.0,15.0,250,7.5,1.4286,2.1429,28.0,1.0714,0.61,1.11,5.6,0.1962
+NE4,Granite-NE,7.0,9.5,15.0,250,7.5,1.3571,2.1429,28.0,1.0714,0.57,1.11,5.6,0.1997
+NE5,Granite-NE,7.0,9.5,15.0,250,7.5,1.3571,2.1429,28.0,1.0714,0.62,1.11,5.6,0.1786

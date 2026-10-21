@@ -1,0 +1,48 @@
+# Blast-fragmentation validation blasts, the UNION of the two published hold-out sets, 14 rows.
+#
+# Sources:
+#   [A] Hudaverdi, Kulatilake and Kuzu (2010), Int. J. Numer. Anal. Meth. Geomech. 35:1318-1333,
+#       doi:10.1002/nag.957, Table VIII. 13 blasts, with a regression and a Kuznetsov prediction.
+#   [B] Kulatilake, Hudaverdi and Wu (2012), Geotech. Geol. Eng., doi:10.1007/s10706-012-9496-3,
+#       Tables 4 and 5. 12 blasts, with a regression, a Kuznetsov and a neural-network prediction.
+#   Rc1's seven inputs come from [A] Table I (it is one of the 35 Group-1 TRAINING blasts).
+#
+# The two sets are NOT the same. [B] adds Rc1 and drops Mi7 and Ad25. The union is 14 rows; the
+# membership flags say which set each row belongs to, so either published protocol can be reproduced
+# exactly and neither is silently widened.
+#
+# THREE DEFECTS IN THE PUBLISHED VALIDATION, carried deliberately and asserted in code:
+#
+# 1. LEAKAGE. Rc1 is in [B]'s validation set AND in the 35-blast Group-1 training table that [B]
+#    says it trained on. Measured 2026-09-09: removing Rc1 costs the regression 0.013 and the neural
+#    net 0.005 in variance explained, and GAINS the Kuznetsov arm 0.216, because Rc1 is its
+#    second-worst row. [B] separately records that En13 has inputs identical to training blast En4.
+#
+# 2. THE TWO PAPERS DISAGREE ON THEIR OWN PREDICTIONS. Both print the same regression equations
+#    ([A] Eqs. 9 and 10 = [B] Eqs. 15 and 16), yet their regression columns differ on Mr12, Sm8,
+#    Oz9 and Ad23, and their Kuznetsov columns differ on nine rows. Recomputing the published
+#    Group-2 equation resolves it: on all four disagreeing rows the computed value rounds to [A]'s
+#    figure and not to [B]'s. [A] is the correct application of the equation both papers print.
+#
+# 3. Db10 MATCHES NEITHER. The published Group-2 equation applied to Db10's published inputs gives
+#    0.324 m, while both papers print 0.16 m, a factor of 2.03. Two readings would close it and
+#    neither is confirmable: an in situ block size of 0.20 m rather than 1.00 m, or a Young modulus
+#    of 17.3 GPa rather than 9.57. UNRESOLVED. Db10 is retained with its published inputs and the
+#    disagreement travels with the row.
+#
+# Numeric values are experimental facts reused with citation; the source PDFs are not redistributed.
+blast_id,site,group,S_over_B,H_over_B,B_over_D,T_over_B,Pf_kg_m3,XB_m,E_GPa,x50_measured_m,x50_regression_2010_m,x50_kuzram_2010_m,x50_regression_2012_m,x50_kuzram_2012_m,x50_nn_mean_2012_m,in_2010_table8,in_2012_table45,in_training_table
+En13,Enusa,1,1.24,1.33,27.27,0.78,0.48,1.11,60.00,0.47,0.39,0.48,0.39,0.44,0.42,true,true,false
+Ru7,Reocin-UG,1,1.13,5.00,39.47,3.11,0.31,2.00,45.00,0.64,0.51,0.71,0.51,0.65,0.63,true,true,false
+Mg8,Murgul,1,1.10,2.40,30.30,0.80,0.55,1.23,50.00,0.44,0.40,0.42,0.40,0.39,0.37,true,true,false
+Mg9,Murgul,1,1.00,2.67,27.27,0.89,0.75,0.77,50.00,0.25,0.24,0.33,0.24,0.30,0.28,true,true,false
+Rc1,Reocin,1,1.17,1.50,26.20,1.08,0.33,0.68,45.00,0.46,,,0.52,0.72,0.43,false,true,true
+Mr12,Mrica,2,1.25,6.25,31.58,0.63,0.48,1.03,32.00,0.20,0.14,0.27,0.16,0.24,0.12,true,true,false
+Db10,Dongri-Buzurg,2,1.15,4.35,20.00,1.75,0.89,1.00,9.57,0.35,0.16,0.09,0.16,0.08,0.33,true,true,false
+Mi7,Miami,2,1.00,1.67,33.33,0.70,0.47,0.09,10.00,0.08,0.05,0.20,,,,true,false,false
+Sm8,Soma,2,1.25,2.50,28.57,0.83,0.42,0.50,13.25,0.18,0.17,0.38,0.19,0.35,0.19,true,true,false
+Oz8,Ozmert,2,1.20,2.40,28.09,1.00,0.53,0.82,15.00,0.23,0.17,0.22,0.17,0.20,0.15,true,true,false
+Oz9,Ozmert,2,1.11,3.33,30.34,1.11,0.47,0.54,15.00,0.17,0.17,0.25,0.16,0.23,0.19,true,true,false
+Ad23,Akdaglar,2,1.11,4.44,18.95,1.67,1.25,1.63,16.90,0.21,0.19,0.12,0.18,0.11,0.21,true,true,false
+Ad24,Akdaglar,2,1.28,3.61,18.95,1.67,0.89,0.61,16.90,0.20,0.15,0.13,0.14,0.13,0.19,true,true,false
+Ad25,Akdaglar,2,1.20,2.80,28.09,1.00,0.50,1.49,16.90,0.17,0.21,0.23,,,,true,false,false

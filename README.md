@@ -11,7 +11,7 @@
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-1.20-005CED)](https://onnxruntime.ai/)
 [![WPF](https://img.shields.io/badge/UI-WPF-0078D7)](https://learn.microsoft.com/dotnet/desktop/wpf/)
 [![Docker](https://img.shields.io/badge/container-Docker-2496ED)](Dockerfile)
-[![xUnit](https://img.shields.io/badge/tests-18%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
+[![xUnit](https://img.shields.io/badge/tests-21%20passing-brightgreen)](tests/ChileMining.Core.Tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
@@ -39,9 +39,10 @@ This project builds three ML.NET models -- a **regression** for copper grade, a 
 |---|---|---|
 | Grade estimator R² | 0.833 (±0.12 pp Cu% RMSE) | Ore/waste calls grounded in a real, physically plausible geology-to-grade relationship |
 | P80 (fragmentation) estimator R² | **0.957** (2.83 cm RMSE) | Predicts the actual industry-standard KPI, not a proxy bucket, from real Kuznetsov/Rosin-Rammler physics |
+| **Same approach on 97 real blasts, new mine** | variance explained **-0.585** (FastTree), 0.029 (linear) | The synthetic 0.957 does not transfer to an unseen site — see §7.4 |
 | Fragmentation classifier accuracy | 0.865 micro / 0.852 macro | Quick-glance QA bucket for the desktop app, cross-checked against the P80 regression so labels can't silently diverge |
 | ONNX Runtime vs. ML.NET native, measured parity | 67.29185 vs. 67.29186 cm | Confirms the ONNX export is faithful (floating-point rounding, not a logic discrepancy) |
-| Test coverage | 18/18 xUnit tests passing | Includes causal-relationship guards, not just "the code runs" checks |
+| Test coverage | 21/21 xUnit tests passing | Includes causal-relationship guards, not just "the code runs" checks |
 | Grade estimator trainer comparison | SDCA R²=0.860 > FastTree R²=0.833 on this dataset | Honest head-to-head, not a default-algorithm assumption -- see §7.1 |
 
 ## 3. Solution structure
@@ -169,7 +170,7 @@ All numbers below come from actually running `ChileMining.Trainer` in this repo:
 | **P80 estimator -- R²** | **0.957** |
 | P80 estimator -- RMSE | 2.83 cm |
 | P80 estimator -- MAE | 2.20 cm |
-| xUnit tests | **18/18 passing** |
+| xUnit tests | **21/21 passing** |
 
 ## 7.1 Grade estimator: comparing regression trainers honestly
 
@@ -226,6 +227,31 @@ Two of the xUnit tests specifically guard against a classic ML bug class: a clas
 
 **ONNX Runtime parity, measured directly**: `OnnxExport_ProducesPredictionsMatchingMLNetWithinTolerance` runs the same 15 held-out blast designs through both the native ML.NET prediction engine and the exported ONNX model via `Microsoft.ML.OnnxRuntime.InferenceSession`, and asserts they agree to within 0.01 cm. In one real run: ML.NET predicted `67.29185` cm, ONNX Runtime predicted `67.29186` cm for the same input -- floating-point rounding, not a logic discrepancy, confirming the export is faithful rather than just "the file got written."
 
+## 7.4 The same approach on real blasts
+
+Everything above is measured on `SyntheticDataGenerator`, whose P80 comes from the Kuznetsov/Rosin-Rammler equations the model is then asked to learn back. `RealBlastBenchmark` (run as the last step of `ChileMining.Trainer`) asks what happens on real blasts:
+
+- **Training corpus:** 97 bench blasts from ten open-pit, underground and quarry operations on four continents (including Murgul, an open-pit copper mine in Turkey), published by Hudaverdi, Kulatilake and Kuzu (2010), *Int. J. Numer. Anal. Meth. Geomech.* 35:1318-1333, doi:10.1002/nag.957. Seven dimensionless inputs (spacing/burden, bench height/burden, burden/hole diameter, stemming/burden, powder factor, in-situ block size, Young's modulus) and the measured mean fragment size x50.
+- **Published hold-out:** 13 blasts with the paper's own Kuznetsov and regression predictions, so the comparison is on the same rows.
+- **Field blasts:** five production blasts in a granite mine in north-eastern China, Sui et al. (2025), *Appl. Sci.* 15:1254, CC BY 4.0.
+
+The CSVs in `data/real/` are the transcription verified in [CAOS_BlastFrag](https://github.com/fsantibanezleal/CAOS_BlastFrag) (MIT), which keeps the sources and the known defects of the published validation. The target is x50 rather than P80 because that is what the papers measured; the metric is variance explained (1 - SSE/SST), which goes negative when a model is worse than predicting the mean.
+
+| Protocol | FastTree | SDCA (linear) | Training mean | Kuz-Ram (published) | Regression (published) |
+|---|---:|---:|---:|---:|---:|
+| Synthetic P80 (§7, for reference) | 0.957 | — | — | — | — |
+| Random 5-fold, 97 blasts | 0.760 | 0.540 | -0.117 | — | — |
+| **Leave one site out** (a new mine) | **-0.585** | 0.029 | -0.216 | — | — |
+| Published hold-out, 13 blasts | 0.895 | 0.772 | — | 0.445 | 0.747 |
+| Field blasts, China (MAE) | 0.250 m | 0.019 m | — | — | — |
+
+What this says:
+
+- **Random splits flatter the model.** Within a site, blasts share rock, pattern and often identical inputs, so a random fold tests memory of the site, not prediction. Holding a whole site out, FastTree is worse than predicting the training mean (-0.585) and the linear model barely matches it (0.029). The 0.957 of the synthetic data does not describe what the model would do at a mine it has not seen.
+- **On the published hold-out the trees beat Kuz-Ram (0.895 vs 0.445)**, but those 13 blasts come from the training sites, and one of them has inputs identical to a training blast. It is the same within-site optimism as the random split, not evidence of transfer.
+- **Trees cannot extrapolate.** The Chinese granite has a Young's modulus of 5.6 GPa, below the corpus range (9.6 to 60 GPa). FastTree misses x50 by 25 cm on fragments around 15 cm; the linear model, which extrapolates smoothly, misses by 1.9 cm. On five blasts that is an anecdote, but it is the expected failure of a tree model outside its training range.
+- **Grade estimation stays synthetic.** There is no public drill-hole dataset with this model's inputs (geological unit, alteration, density, resistivity, distance to fault) and a copper grade, so `GradeEstimator` is still trained and reported on generated data only.
+
 ## 8. Two real bugs caught by running this, not by reviewing it
 
 - **P80 threshold miscalibration.** The first version of `FragmentationQuality.Classify` used thresholds carried over from the old ad-hoc fragmentation index (`Fino <= 15cm`). Once P80 was computed from the real Kuznetsov/Rosin-Rammler model, the existing `HigherPowderFactor_Produces...` test started failing with "0.0% Fino vs 0.0% Fino" -- the *best physically possible* case for this project's parameter ranges (max powder factor, softest rock, tightest pattern) works out to P80 ≈ 19.9cm, above the old 15cm cutoff, so the "Fino" bucket was unreachable no matter the input. Fixed by generating 5,000 designs and reading the actual P80 percentile distribution (min≈20cm, p50≈43cm, max≈98cm) before choosing thresholds (30/45/60cm) -- calibrated against measured output, not guessed a priori.
@@ -239,7 +265,7 @@ Two of the xUnit tests specifically guard against a classic ML bug class: a clas
 
 ## 10. Disclaimer
 
-All data is synthetic, generated by `SyntheticDataGenerator` with a fixed seed. The cutoff grade used in the desktop app (0.30% Cu) is illustrative, not a real economic cutoff -- a real cutoff depends on mine/plant costs and the copper price, and isn't a fixed constant.
+The models in §7 to §7.3 and the desktop app are trained on synthetic data, generated by `SyntheticDataGenerator` with a fixed seed. §7.4 uses real published blasts; grade estimation has no real counterpart. The cutoff grade used in the desktop app (0.30% Cu) is illustrative, not a real economic cutoff -- a real cutoff depends on mine/plant costs and the copper price, and isn't a fixed constant.
 
 ## License
 
