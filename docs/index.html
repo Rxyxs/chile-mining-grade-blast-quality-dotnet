@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>⛏️ Chile Mining -- Grade Control &amp; Blast Quality (.NET)</title>
-<meta name="description" content="**A native C# / ML.NET data science solution for copper grade estimation and blast fragmentation quality, built and opened directly in Visual Studio**">
+<meta name="description" content="A native C# / ML.NET data science solution for copper grade estimation and blast fragmentation quality, built and opened directly in Visual Studio">
 <style>
   :root { --bg:#FBFAF8; --surface:#FFF; --ink:#23201D; --muted:#6B645D; --line:#E3DED7; --accent:#B5553D; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
@@ -47,7 +47,7 @@
 <h2>7.1 Grade estimator: comparing regression trainers honestly</h2>
 <figure>
 <img src="figures/trainer_comparison_stability.png" alt="Trainer comparison across 12 retrainings" loading="lazy">
-<figcaption><strong>And the comparison holds up to being repeated</strong>, which is worth checking before acting on a 0.027 R² difference. Over 12 retrainings on the same 2,000 samples, FastTree returns <strong>0.8329 every single time</strong> and Online Gradient Descent <strong>0.8240 every single time</strong> — both are deterministic here. SDCA is not: it lands in [0.8598, 0.8635], a spread of 0.0036. Its worst run still beats FastTree&#x27;s fixed value by 0.027, roughly <strong>7x its own spread</strong>, so the ranking is not an artifact of a lucky draw. What *is* a single draw is the headline <code>0.860</code>; the honest summary is &quot;SDCA ≈ 0.861 ± 0.002, FastTree exactly 0.8329&quot;.</figcaption>
+<figcaption><strong>And the comparison holds up to being repeated</strong>, which is worth checking before acting on a 0.027 R² difference. Over 12 retrainings on the same 2,000 samples, FastTree returns <strong>0.8329 every single time</strong> and Online Gradient Descent <strong>0.8240 every single time</strong> — both are deterministic here. SDCA is not: it lands in [0.8598, 0.8635], a spread of 0.0036. Its worst run still beats FastTree&#x27;s fixed value by 0.027, roughly <strong>7x its own spread</strong>, so the ranking is not an artifact of a lucky draw.</figcaption>
 </figure>
 <h2>7.2 The classifier metrics are not a fixed number</h2>
 <figure>
